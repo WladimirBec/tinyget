@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Copyright (C) 2020 Wladimir Bec
  */
-#ifndef HTTP_DOWNLOADER_URL_H
-#define HTTP_DOWNLOADER_URL_H
+#ifndef TINYGET_URL_H
+#define TINYGET_URL_H
 
 struct url {
     char *scheme;
