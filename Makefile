@@ -1,20 +1,20 @@
 CC     ?= clang
-CFLAGS ?= -O3 -pipe -march=native -Wall -Wextra -Werror -D_POSIX_C_SOURCE=200809L
+CFLAGS ?= -march=native -Wall -Wextra -Werror -D_POSIX_C_SOURCE=200809L
 
 BLD_DIR := $(abspath ./bld)
 
-SRCS  := url.c
+SRCS  := url.c http.c
 OBJS  := $(patsubst %.c,$(BLD_DIR)/%.o,$(SRCS))
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 0)
-CFLAGS += -O3 -flto -static
+CFLAGS += -O3 -flto -static -pipe
 else
-CFLAGS += -O0 -g -mno-avx -mno-avx512f
+CFLAGS += -O0 -g -mno-avx -mno-avx512f -march=x86-64
 endif
 
-main: $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $(BLD_DIR)/$@
+example: $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) example.c -o $(BLD_DIR)/$@
 
 $(BLD_DIR)/%.o: %.c
 	mkdir -p $(dir $@)
