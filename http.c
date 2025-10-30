@@ -14,10 +14,9 @@
 
 #define BUF_SIZE 4096
 
-#define call_cb(cb, ...) cb != NULL &&cb(__VA_ARGS__)
+#define call_cb(cb, ...) cb != NULL &&cb(__VA_OPT__(__VA_ARGS__, ) cb##_data)
 
 // features wish:
-// timeout
 // resume
 // download if newer
 // gzip support
@@ -26,9 +25,9 @@
 // support redirect
 
 static int
-http_connect(struct url const *url, struct http_callbacks const *cbs)
+http_connect(struct url const *url, struct http_opts const *opts)
 {
-    if (call_cb(cbs->resolve, cbs->resolve_data) == -1) {
+    if (call_cb(opts->callbacks.resolve) == -1) {
         errno = ECANCELED;
         return -1;
     }
@@ -47,7 +46,7 @@ http_connect(struct url const *url, struct http_callbacks const *cbs)
 
     int s = -1;
     for (struct addrinfo *r = res; r != NULL; r = r->ai_next, s = -1) {
-        if (call_cb(cbs->connect, r, cbs->connect_data) == -1) {
+        if (call_cb(opts->callbacks.connect, r) == -1) {
             errno = ECANCELED;
             break;
         }
@@ -56,10 +55,31 @@ http_connect(struct url const *url, struct http_callbacks const *cbs)
             continue;
         }
 
-        if (connect(s, r->ai_addr, r->ai_addrlen) != -1) {
-            break;
+        if (opts->timeout.connect > 0) {
+            struct timeval tv = {.tv_sec = opts->timeout.connect};
+            if (setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == -1) {
+                goto err;
+            }
         }
 
+        if (connect(s, r->ai_addr, r->ai_addrlen) == -1) {
+            if (errno == EINPROGRESS) {
+                errno = ETIMEDOUT;
+            }
+            goto err;
+        }
+
+        size_t val[2] = {opts->timeout.write, opts->timeout.read};
+        int opt[2]    = {SO_SNDTIMEO, SO_RCVTIMEO};
+        for (size_t i = 0; i < 2; ++i) {
+            struct timeval tv = {.tv_sec = val[i]};
+            if (setsockopt(s, SOL_SOCKET, opt[i], &tv, sizeof(tv)) == -1) {
+                goto err;
+            }
+        }
+
+        break;
+    err:
         close(s);
     }
 
@@ -68,7 +88,7 @@ http_connect(struct url const *url, struct http_callbacks const *cbs)
 }
 
 static int
-make_request(struct url const *u, int sock, struct http_callbacks const *cbs)
+make_request(struct url const *u, int sock, struct http_opts const *opts)
 {
     char buf[BUF_SIZE] = {0};
     size_t len         = 0;
@@ -94,11 +114,12 @@ make_request(struct url const *u, int sock, struct http_callbacks const *cbs)
 
     int sent = 0;
     while (sent < len) {
-        if ((n = send(sock, buf + sent, len, 0)) == -1) {
+        char *pos = buf + sent;
+        if ((n = send(sock, pos, len, 0)) == -1) {
             return -1;
         }
 
-        if (call_cb(cbs->write, buf + sent, len, cbs->write_data) == -1) {
+        if (call_cb(opts->callbacks.write, pos, len) == -1) {
             errno = ECANCELED;
             return -1;
         }
@@ -111,7 +132,7 @@ make_request(struct url const *u, int sock, struct http_callbacks const *cbs)
 }
 
 static int
-read_response(int sock, struct http_callbacks const *cbs)
+read_response(int sock, struct http_opts const *opts)
 {
     char buf[BUF_SIZE] = {0};
     size_t len         = 0;
@@ -153,7 +174,7 @@ read_response(int sock, struct http_callbacks const *cbs)
     // move start of the body at the start of the buffer
     len = BUF_SIZE - (body - buf) - 4;
     memmove(buf, body + 4, len);
-    if (len > 0 && call_cb(cbs->read, buf, len, cbs->read_data) == -1) {
+    if (len > 0 && call_cb(opts->callbacks.read, buf, len) == -1) {
         errno = ECANCELED;
         return -1;
     }
@@ -164,7 +185,7 @@ read_response(int sock, struct http_callbacks const *cbs)
             return -1;
         }
 
-        if (call_cb(cbs->read, buf, n, cbs->read_data) == -1) {
+        if (call_cb(opts->callbacks.read, buf, n) == -1) {
             errno = ECANCELED;
             return -1;
         }
@@ -174,25 +195,23 @@ read_response(int sock, struct http_callbacks const *cbs)
 }
 
 int
-http_download(struct url const *url, struct http_callbacks const *cbs)
+http_download(struct url const *url, struct http_opts const *opts)
 {
-    if (cbs == NULL) {
-        cbs = &(struct http_callbacks){0};
+    if (opts == NULL) {
+        opts = &(struct http_opts){0};
     }
 
-    int sock = http_connect(url, cbs);
+    int sock = http_connect(url, opts);
     if (sock == -1) {
         return -1;
     }
 
     int err = 0;
-    if ((err = make_request(url, sock, cbs) == -1)) {
+    if ((err = make_request(url, sock, opts) == -1)) {
         goto end;
     }
 
-    if ((err = read_response(sock, cbs)) == -1) {
-        goto end;
-    }
+    err = read_response(sock, opts);
 
 end:
     close(sock);

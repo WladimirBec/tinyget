@@ -49,21 +49,30 @@ read_cb(char const *buf, size_t len, void *data)
 int
 main(void)
 {
-    struct url *u = url_parse("http://www.google.com/404");
+    struct url *u = url_parse("http://www.npc.gov.cn/");
     if (u == NULL) {
         perror("failed to parse url");
         return -1;
     }
 
-    int err                   = 0;
-    struct http_callbacks cbs = {
-        .resolve      = resolve_cb,
-        .resolve_data = u->host,
-        .connect      = connect_cb,
-        .write        = write_cb,
-        .read         = read_cb,
+    int err               = 0;
+    struct http_opts opts = {
+        .timeout =
+            {
+                .connect = 5,
+                .write   = 10,
+                .read    = 10,
+            },
+        .callbacks =
+            {
+                .resolve      = resolve_cb,
+                .resolve_data = u->host,
+                .connect      = connect_cb,
+                .write        = write_cb,
+                .read         = read_cb,
+            },
     };
-    if ((err = http_download(u, &cbs)) == -1) {
+    if ((err = http_download(u, &opts)) == -1) {
         perror("download failed");
         err = 1;
     }

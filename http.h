@@ -10,34 +10,63 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/**
- * Struct containing the global callback used by http_download(), if any of
- * these callbacks return -1 http_download() will be stopped and returns -1.
- */
-struct http_callbacks {
+struct http_opts {
     /**
-     * Called before attempting to resolve the given url.
+     * Specify the timeout amount in seconds for the connection to be made.
+     *
+     * 0 means never timeout.
      */
-    int (*resolve)(void *data);
-    void *resolve_data;
+    /**
+     * Struct containg the various timeouts used along the http_download().
+     *
+     * 0 means never timeout.
+     */
+    struct {
+        /**
+         * Timeout used to connect to the given url.
+         */
+        size_t connect;
+
+        /**
+         * Timeout used to send requests to the given url.
+         */
+        size_t write;
+
+        /**
+         * Timeout used to read responses from the given url.
+         */
+        size_t read;
+    } timeout;
 
     /**
-     * Called before attempting to connect to the given url.
+     * Struct containing the global callbacks used by http_download(), if any of
+     * these callbacks return -1 http_download() will be stopped and returns -1.
      */
-    int (*connect)(struct addrinfo *addr, void *data);
-    void *connect_data;
+    struct {
+        /**
+         * Called before attempting to resolve the given url.
+         */
+        int (*resolve)(void *data);
+        void *resolve_data;
 
-    /**
-     * Called each time after data are sent to the given url.
-     */
-    int (*write)(char const *buf, size_t len, void *data);
-    void *write_data;
+        /**
+         * Called before attempting to connect to the given url.
+         */
+        int (*connect)(struct addrinfo *addr, void *data);
+        void *connect_data;
 
-    /**
-     * Called each time after data are received from the given url.
-     */
-    int (*read)(char const *buf, size_t len, void *data);
-    void *read_data;
+        /**
+         * Called each time after data are sent to the given url.
+         */
+        int (*write)(char const *buf, size_t len, void *data);
+        void *write_data;
+
+        /**
+         * Called each time after data are received from the given url.
+         */
+        int (*read)(char const *buf, size_t len, void *data);
+        void *read_data;
+    } callbacks;
 };
 
 /**
@@ -45,6 +74,6 @@ struct http_callbacks {
  *
  * Returns 0 on success, otherwise -1 and set errno.
  */
-int http_download(struct url const *url, struct http_callbacks const *cbs);
+int http_download(struct url const *url, struct http_opts const *opts);
 
 #endif
